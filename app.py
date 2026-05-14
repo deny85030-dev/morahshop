@@ -20,7 +20,7 @@ products = {
     'name': 'Produk Digital Premium',
     'price': 50000,
     'description': 'Ebook + Video Tutorial Premium',
-    'payment_instructions': 'Transfer ke BCA 1234567890 a.n MORAHSHOP\nKirim bukti transfer ke WhatsApp admin'
+    'payment_instructions': '🏦 Bank Jago\nNo. Rekening: 106371536422\na.n. Deny Prasetyo\n\n📱 Scan QRIS di bawah untuk pembayaran instan'
 }
 
 orders = []
