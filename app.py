@@ -1,27 +1,35 @@
-from flask import Flask, request, render_template_string, redirect
+from flask import Flask, request, render_template_string, redirect, session
 from datetime import datetime
 import os
 import requests
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from functools import wraps
 
 app = Flask(__name__)
+app.secret_key = 'morahshop-secret-key-2026'  # Ganti sesuka Anda
 
 # ==================== KONFIGURASI ====================
 STORE_NAME = 'MORAHSHOP'
-WHATSAPP_ADMIN = '6285138718594'  # NOMOR BARU ANDA
+WHATSAPP_ADMIN = '6285138718594'
 EMAIL_SENDER = 'morahshop@gmail.com'
 EMAIL_PASSWORD = 'ewsv nupx pvem olmq'
 FONNTE_API_KEY = 'aM5d4QEx2uEV2bjt3ta3'
 
-# Data produk default
+# PASSWORD ADMIN (GANTI dengan password pilihan Anda!)
+ADMIN_PASSWORD = 'admin123'  # GANTI! Contoh: 'tokorahasia' atau 'denyganteng'
+
+# Data produk
 products = {
     'name': 'Produk Digital Premium',
     'price': 50000,
     'description': 'Ebook + Video Tutorial Premium',
-    'payment_instructions': '🏦 Bank Jago\nNo. Rekening: 106371536422\na.n. Deny Prasetyo\n\n📱 Scan QRIS di bawah untuk pembayaran instan'
+    'payment_instructions': '🏦 Bank Jago\nNo. Rekening: 106371536422\na.n. Deny Prasetyo\n\n🔗 Scan QRIS: {qris_link}'
 }
+
+# QRIS Bank Jago (ganti dengan link QRIS upload Anda)
+QRIS_IMAGE_URL = "https://i.ibb.co/xxxxx/qris-bank-jago.jpg"  # GANTI!
 
 orders = []
 
@@ -45,7 +53,7 @@ def send_whatsapp(phone_number, message):
         return False
 
 # ==================== FUNGSI KIRIM EMAIL ====================
-def send_email(to_email, customer_name, invoice_number, product_name, price, payment_link, qris_url):
+def send_email(to_email, customer_name, invoice_number, product_name, price, qris_url):
     try:
         email_html = f"""
         <!DOCTYPE html>
@@ -67,6 +75,17 @@ def send_email(to_email, customer_name, invoice_number, product_name, price, pay
                     <b>💰 Total:</b> <span style="font-size:20px;font-weight:bold;color:#764ba2;">Rp {price}</span><br><br>
                     <b>📊 Status:</b> 
                     <span style="background:#fef3c7;padding:5px 15px;border-radius:50px;">⏳ Menunggu Pembayaran</span>
+                </div>
+                
+                <div style="text-align:center;margin:25px 0;">
+                    <img src="{qris_url}" style="width:200px;" alt="QRIS">
+                    <p style="font-size:12px;color:#666;">Scan QRIS di atas untuk pembayaran</p>
+                </div>
+                
+                <div style="background:#f0fdf4;border-radius:12px;padding:15px;margin:20px 0;">
+                    <b>🏦 Transfer Bank Jago</b><br>
+                    No. Rekening: 106371536422<br>
+                    a.n. Deny Prasetyo
                 </div>
                 
                 <hr style="margin:25px 0;">
@@ -94,11 +113,19 @@ def send_email(to_email, customer_name, invoice_number, product_name, price, pay
         server.sendmail(EMAIL_SENDER, to_email, msg.as_string())
         server.quit()
         
-        print(f"✅ Email terkirim ke {to_email}")
         return True
     except Exception as e:
-        print(f"❌ Email gagal: {e}")
+        print(f"Email error: {e}")
         return False
+
+# ==================== DEKORATOR PROTECT ADMIN ====================
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('admin_logged_in'):
+            return redirect('/admin-login')
+        return f(*args, **kwargs)
+    return decorated_function
 
 # ==================== TEMPLATE HTML ====================
 HOME_TEMPLATE = '''
@@ -116,7 +143,6 @@ HOME_TEMPLATE = '''
         .product-name{font-size:22px;font-weight:bold;margin-bottom:10px}
         .price{font-size:32px;color:#764ba2;font-weight:bold;margin:10px 0}
         .btn{display:inline-block;background:#764ba2;color:white;padding:15px 30px;border-radius:50px;text-decoration:none;font-weight:bold;margin-top:15px}
-        .admin-link{display:block;margin-top:20px;color:#999;font-size:12px}
     </style>
 </head>
 <body>
@@ -128,7 +154,6 @@ HOME_TEMPLATE = '''
             <p>{{ product_desc }}</p>
         </div>
         <a href="/checkout" class="btn">🛒 Beli Sekarang</a>
-        <a href="/admin" class="admin-link">⚙️ Admin</a>
     </div>
 </body>
 </html>
@@ -194,7 +219,8 @@ SUCCESS_TEMPLATE = '''
         <p>Invoice: <strong>{{ invoice }}</strong></p>
         <div class="info">
             📧 Email invoice sudah dikirim ke email Anda<br>
-            📱 WhatsApp juga sudah kami kirim
+            📱 WhatsApp juga sudah kami kirim<br>
+            💳 Silakan transfer ke Bank Jago 106371536422 a.n Deny Prasetyo
         </div>
         <a href="/" class="btn">Kembali ke Toko</a>
     </div>
@@ -207,7 +233,7 @@ ADMIN_TEMPLATE = '''
 <html>
 <head>
     <meta name="viewport" content="width=device-width">
-    <title>Admin Panel - {{ store }}</title>
+    <title>Admin Panel</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:Arial;background:#f0f0f0;padding:20px}
@@ -215,17 +241,17 @@ ADMIN_TEMPLATE = '''
         input,textarea{width:100%;padding:12px;margin:10px 0;border:1px solid #ddd;border-radius:8px}
         button{background:#764ba2;color:white;padding:14px;border:none;border-radius:8px;width:100%;font-weight:bold;cursor:pointer}
         .orders{margin-top:30px}
-        .order-card{background:#f8f9fa;border-radius:12px;padding:15px;margin:10px 0;border-left:4px solid #764ba2}
-        .status{display:inline-block;padding:4px 12px;border-radius:50px;font-size:12px;margin-top:8px}
-        .status-pending{background:#fef3c7;color:#92400e}
         table{width:100%;border-collapse:collapse}
         th,td{padding:10px;text-align:left;border-bottom:1px solid #ddd}
         th{background:#764ba2;color:white}
+        .logout{text-align:right;margin-bottom:20px}
+        .logout a{color:#ef4444;text-decoration:none}
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>⚙️ Admin Panel - {{ store }}</h2>
+        <div class="logout"><a href="/admin-logout">🚪 Logout</a></div>
+        <h2>⚙️ Admin Panel</h2>
         
         <h3>📦 Edit Produk</h3>
         <form method="POST" action="/update-product">
@@ -240,12 +266,7 @@ ADMIN_TEMPLATE = '''
             <h3>📋 Daftar Pesanan ({{ orders|length }})</h3>
             {% if orders %}
             <table>
-                <tr>
-                    <th>Invoice</th>
-                    <th>Customer</th>
-                    <th>Total</th>
-                    <th>Status</th>
-                </tr>
+                <tr><th>Invoice</th><th>Customer</th><th>Total</th><th>Status</th></tr>
                 {% for order in orders %}
                 <tr>
                     <td>{{ order.invoice }}</td>
@@ -259,6 +280,35 @@ ADMIN_TEMPLATE = '''
                 <p>✨ Belum ada pesanan</p>
             {% endif %}
         </div>
+    </div>
+</body>
+</html>
+'''
+
+LOGIN_TEMPLATE = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width">
+    <title>Admin Login</title>
+    <style>
+        body{font-family:Arial;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;justify-content:center;align-items:center}
+        .card{background:white;border-radius:20px;padding:40px;width:350px;text-align:center}
+        input{width:100%;padding:12px;margin:10px 0;border:1px solid #ddd;border-radius:8px}
+        button{background:#764ba2;color:white;padding:12px;border:none;border-radius:8px;width:100%;cursor:pointer}
+        .error{color:red;margin-bottom:10px}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>🔐 Admin Login</h2>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST">
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
     </div>
 </body>
 </html>
@@ -295,10 +345,6 @@ def process_checkout():
     
     invoice_number = f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     
-    # Ganti QRIS dan Payment Link di sini sesuai kebutuhan
-    payment_link = "https://your-payment-link.com"
-    qris_url = "https://upload.wikimedia.org/wikipedia/commons/0/04/QR_Code_Example.svg"
-    
     order_data = {
         'invoice': invoice_number,
         'customer_name': customer,
@@ -311,10 +357,10 @@ def process_checkout():
     }
     orders.insert(0, order_data)
     
-    # Kirim Email
-    send_email(email, customer, invoice_number, products['name'], f"{products['price']:,}", payment_link, qris_url)
+    # Kirim Email dengan QRIS
+    send_email(email, customer, invoice_number, products['name'], f"{products['price']:,}", QRIS_IMAGE_URL)
     
-    # Kirim WhatsApp
+    # Kirim WhatsApp (tanpa gambar QRIS, tapi dengan link ke email)
     wa_msg = f"""📋 INVOICE PESANAN
     
 Halo {customer},
@@ -325,25 +371,48 @@ Terima kasih telah berbelanja di {STORE_NAME}
 📦 Produk: {products['name']}
 💰 Harga: Rp {products['price']:,}
 📋 Invoice: {invoice_number}
-📅 Tanggal: {datetime.now().strftime('%d/%m/%Y %H:%M')}
-📊 Status: ⏳ Menunggu Pembayaran
 ━━━━━━━━━━━━━━━━━━
 
-💳 Cara Bayar:
-{products['payment_instructions']}
+🏦 *Cara Bayar:*
+Bank Jago
+No. Rekening: 106371536422
+a.n. Deny Prasetyo
+
+💳 Scan QRIS untuk pembayaran instan:
+QRIS tersedia di EMAIL yang sudah kami kirimkan ke {email}
+
+📧 Cek email Anda untuk QRIS dan invoice lengkap!
 
 Admin: wa.me/{WHATSAPP_ADMIN}"""
     
     send_whatsapp(whatsapp_clean, wa_msg)
-    send_whatsapp(WHATSAPP_ADMIN, f"🔔 PESANAN BARU!\n\n👤 {customer}\n📱 {whatsapp_clean}\n📧 {email}\n📋 {invoice_number}")
+    send_whatsapp(WHATSAPP_ADMIN, f"🔔 PESANAN BARU!\n\n👤 {customer}\n📱 {whatsapp_clean}\n📧 {email}\n📋 {invoice_number}\n💰 Rp {products['price']:,}")
     
     return render_template_string(SUCCESS_TEMPLATE, store=STORE_NAME, invoice=invoice_number)
 
+# ==================== ROUTES ADMIN (PROTECTED) ====================
+
+@app.route('/admin-login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        if request.form['password'] == ADMIN_PASSWORD:
+            session['admin_logged_in'] = True
+            return redirect('/admin')
+        return render_template_string(LOGIN_TEMPLATE, error='Password salah!')
+    return render_template_string(LOGIN_TEMPLATE, error=None)
+
+@app.route('/admin-logout')
+def admin_logout():
+    session.pop('admin_logged_in', None)
+    return redirect('/admin-login')
+
 @app.route('/admin')
+@login_required
 def admin():
-    return render_template_string(ADMIN_TEMPLATE, store=STORE_NAME, product=products, orders=orders)
+    return render_template_string(ADMIN_TEMPLATE, product=products, orders=orders)
 
 @app.route('/update-product', methods=['POST'])
+@login_required
 def update_product():
     products['name'] = request.form['name']
     products['price'] = int(request.form['price'])
@@ -353,12 +422,12 @@ def update_product():
 
 @app.route('/test-wa')
 def test_wa():
-    result = send_whatsapp(WHATSAPP_ADMIN, "🧪 Test dari MORAHSHOP!")
+    result = send_whatsapp(WHATSAPP_ADMIN, "🧪 Test MORAHSHOP: WA OK!")
     return "✅ WA OK" if result else "❌ WA GAGAL"
 
 @app.route('/test-email')
 def test_email():
-    result = send_email(EMAIL_SENDER, "Test", "TEST-001", "Test", "50000", "", "")
+    result = send_email(EMAIL_SENDER, "Test", "TEST-001", "Test", "50000", QRIS_IMAGE_URL)
     return "✅ EMAIL OK" if result else "❌ EMAIL GAGAL"
 
 if __name__ == '__main__':
