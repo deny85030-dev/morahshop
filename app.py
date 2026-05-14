@@ -29,7 +29,7 @@ products = {
 }
 
 # QRIS Bank Jago (ganti dengan link QRIS upload Anda)
-QRIS_IMAGE_URL = "https://i.ibb.co/xxxxx/qris-bank-jago.jpg"  # GANTI!
+QRIS_IMAGE_URL = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjdEuaeTQp9-oYTbkTybyGb4hV23Gbdi12E9p9x3SJNlzJCfweazzWg2Tr6iSXHFXlSxi845dqwVbRZQ8CPnI63_mtQ9wNltEb_gDtJtP5GiI_YeIZLWnBVw_AZ1Glo_0RfuHBupJFra28Gf1M3idWT6l9G_edl1DNSjZ5P9DLhT5CFzwCIkG7pWGHLYSk/w398-h400/photo_2026-05-14_06-29-01.jpg"  # GANTI!
 
 orders = []
 
